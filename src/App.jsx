@@ -1,17 +1,14 @@
 
-import { useState } from 'react'
+import { DictaphoneWidgetB } from "./Dictaphone";
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
 
   return (
     <div className="container">
       <h1>Chrome Extension</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <DictaphoneWidgetB />
       </div>
     </div>
   )
