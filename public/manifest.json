@@ -1,10 +1,20 @@
 {
-    "manifest_version": 3,
-    "name": "Chrome Extension",
-    "description": "Chrome Extension with React",
-    "version": "1.0.0",
-    "action": {
-      "default_popup": "index.html"
-    },
-    "permissions": ["storage", "activeTab"]
+  "manifest_version": 3,
+  "name": "Speech to Text Extension",
+  "version": "1.0.0",
+  "description": "Speech recognition extension",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "optional_permissions": [
+    "audioCapture"
+  ],
+  "action": {
+    "default_popup": "index.html"
+  },
+  "background": {
+    "service_worker": "background.js"
   }
+}

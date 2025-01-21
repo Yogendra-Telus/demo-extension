@@ -6,6 +6,7 @@ const Dictaphone = ({ commands }) => {
   const [transcribing, setTranscribing] = useState(true);
   const [clearTranscriptOnListen, setClearTranscriptOnListen] = useState(true);
   const [hasMicPermission, setHasMicPermission] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   
   const {
     transcript,
@@ -17,35 +18,61 @@ const Dictaphone = ({ commands }) => {
   } = useSpeechRecognition({ transcribing, clearTranscriptOnListen, commands });
 
   useEffect(() => {
+    console.log('Component mounted, checking microphone permission...');
     checkMicrophonePermission();
   }, []);
-
+  
   useEffect(() => {
-    if (interimTranscript !== '') {
-      console.log('Got interim result:', interimTranscript);
+    if (transcript) {
+      chrome.runtime.sendMessage({ 
+        type: 'TRANSCRIPT_UPDATED',
+        transcript 
+      });
     }
-    if (finalTranscript !== '') {
-      console.log('Got final result:', finalTranscript);
-    }
-  }, [interimTranscript, finalTranscript]);
+  }, [transcript]);
 
   const checkMicrophonePermission = async () => {
+    console.log('Starting microphone permission check...');
+    chrome.runtime.sendMessage({ type: 'MIC_PERMISSION_REQUESTED' });
+  
     try {
-      // Request microphone permission using Chrome extension API
-      const result = await chrome.permissions.request({
+      const perms = await chrome.permissions.contains({
         permissions: ['audioCapture']
       });
-      
-      if (result) {
-        // Check if we can actually access the microphone
+  
+      if (!perms) {
+        const granted = await chrome.permissions.request({
+          permissions: ['audioCapture']
+        });
+        
+        if (!granted) {
+          chrome.runtime.sendMessage({ type: 'MIC_PERMISSION_DENIED' });
+          setErrorMessage('Microphone permission denied');
+          setHasMicPermission(false);
+          return;
+        }
+      }
+  
+      try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(track => track.stop()); // Clean up
+        stream.getTracks().forEach(track => track.stop());
         setHasMicPermission(true);
-      } else {
+        setErrorMessage('');
+        chrome.runtime.sendMessage({ type: 'MIC_PERMISSION_GRANTED' });
+      } catch (mediaError) {
+        chrome.runtime.sendMessage({ 
+          type: 'MIC_PERMISSION_DENIED',
+          error: mediaError.message 
+        });
+        setErrorMessage(`Microphone access error: ${mediaError.message}`);
         setHasMicPermission(false);
       }
     } catch (error) {
-      console.error('Error requesting microphone permission:', error);
+      chrome.runtime.sendMessage({ 
+        type: 'MIC_PERMISSION_DENIED',
+        error: error.message 
+      });
+      setErrorMessage(`Permission error: ${error.message}`);
       setHasMicPermission(false);
     }
   };
@@ -56,17 +83,31 @@ const Dictaphone = ({ commands }) => {
         await checkMicrophonePermission();
       }
       if (hasMicPermission) {
+        chrome.runtime.sendMessage({ type: 'SPEECH_RECOGNITION_STARTED' });
         await SpeechRecognition.startListening({ continuous: true });
       }
     } catch (error) {
-      console.error('Error starting speech recognition:', error);
+      chrome.runtime.sendMessage({ 
+        type: 'SPEECH_RECOGNITION_ERROR',
+        error: error.message 
+      });
+      setErrorMessage(`Start listening error: ${error.message}`);
     }
   };
+  
 
-  const toggleTranscribing = () => setTranscribing(!transcribing);
-  const toggleClearTranscriptOnListen = () => setClearTranscriptOnListen(!clearTranscriptOnListen);
+  const toggleTranscribing = () => {
+    console.log('Toggling transcribing:', !transcribing);
+    setTranscribing(!transcribing);
+  };
+
+  const toggleClearTranscriptOnListen = () => {
+    console.log('Toggling clearTranscriptOnListen:', !clearTranscriptOnListen);
+    setClearTranscriptOnListen(!clearTranscriptOnListen);
+  };
 
   if (!browserSupportsSpeechRecognition) {
+    console.log('Browser does not support speech recognition');
     return (
       <div className="p-4 text-red-500">
         Browser doesn't support speech recognition.
@@ -77,7 +118,14 @@ const Dictaphone = ({ commands }) => {
   if (!hasMicPermission) {
     return (
       <div className="p-4">
-        <div className="text-red-500 mb-4">Microphone access is required</div>
+        <div className="text-red-500 mb-4">
+          Microphone access is required
+          {errorMessage && (
+            <div className="mt-2 text-sm">
+              Error details: {errorMessage}
+            </div>
+          )}
+        </div>
         <button 
           onClick={checkMicrophonePermission}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -94,6 +142,11 @@ const Dictaphone = ({ commands }) => {
         <div>Status: {listening ? 'Listening' : 'Not listening'}</div>
         <div>Transcribing: {transcribing ? 'On' : 'Off'}</div>
         <div>Clear on Listen: {clearTranscriptOnListen ? 'On' : 'Off'}</div>
+        {errorMessage && (
+          <div className="text-red-500 mt-2">
+            {errorMessage}
+          </div>
+        )}
       </div>
       
       <div className="flex flex-wrap gap-2 mt-4">
